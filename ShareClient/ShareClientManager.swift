@@ -8,6 +8,11 @@
 import LoopKit
 import HealthKit
 
+public enum ShareClientManagerError: Error {
+    case notConfigured
+    case lastBackfillTooClose
+    case latestGlucoseValueTooRecent
+}
 
 public class ShareClientManager: CGMManager {
     public static var managerIdentifier = "DexShareClient"
@@ -68,17 +73,27 @@ public class ShareClientManager: CGMManager {
 
     public private(set) var latestBackfill: ShareGlucose?
 
+    private var latestBackfillAttempt: Date? = nil
+
     public func fetchNewDataIfNeeded(_ completion: @escaping (CGMResult) -> Void) {
         guard let shareClient = shareService.client else {
-            completion(.noData)
+            completion(.error(ShareClientManagerError.notConfigured))
             return
         }
 
         // If our last glucose was less than 4.5 minutes ago, don't fetch.
         if let latestGlucose = latestBackfill, latestGlucose.startDate.timeIntervalSinceNow > -TimeInterval(minutes: 4.5) {
-            completion(.noData)
+            completion(.error(ShareClientManagerError.latestGlucoseValueTooRecent))
             return
         }
+
+        // This would be better on a queue to avoid a race condition. As is it can
+        // still trigger multiple backfills at once.
+        if let latestBackfillAttempt = latestBackfillAttempt, latestBackfillAttempt.timeIntervalSinceNow > -TimeInterval(minutes: 1) {
+            completion(.error(ShareClientManagerError.lastBackfillTooClose))
+            return
+        }
+        latestBackfillAttempt = Date()
 
         shareClient.fetchLast(6) { (error, glucose) in
             if let error = error {
@@ -115,6 +130,7 @@ public class ShareClientManager: CGMManager {
         return [
             "## ShareClientManager",
             "latestBackfill: \(String(describing: latestBackfill))",
+            "latestBackfillAttempt: \(String(describing: latestBackfillAttempt))",
             ""
         ].joined(separator: "\n")
     }

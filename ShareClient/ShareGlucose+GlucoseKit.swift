@@ -34,11 +34,6 @@ extension ShareGlucose: SensorDisplayable {
     public var isLocal: Bool {
         return false
     }
-
-
-    public var sensorStartDate: Date? {
-        return nil
-    }
 }
 
 extension SensorDisplayable {
